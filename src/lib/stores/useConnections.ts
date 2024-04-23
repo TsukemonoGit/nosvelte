@@ -3,7 +3,7 @@
  * @copyright 2023 Akiomi Kamakura
  */
 
-import type { ConnectionStatePacket } from 'rx-nostr';
+import type { ConnectionState, ConnectionStatePacket } from 'rx-nostr';
 import type { Observable } from 'rxjs';
 import { from, startWith } from 'rxjs';
 
@@ -20,11 +20,12 @@ export function useConnections({
 
   const init = relays.map((relay) => {
     const from = typeof relay === 'string' ? relay : relay.url;
-    const state = rxNostr.hasRelay(from) ? rxNostr.getRelayState(from) : 'not-started';
+    const state = rxNostr.getDefaultRelay(from)
+      ? rxNostr.getRelayStatus(from)?.connection ?? ('not-started' as ConnectionState)
+      : ('not-started' as ConnectionState);
 
     return { from, state };
   });
-
   return rxNostr.createConnectionStateObservable().pipe(
     startWith(...init),
     scanLatestEach(({ from }) => from)

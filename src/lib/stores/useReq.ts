@@ -3,13 +3,13 @@
  * @copyright 2023 Akiomi Kamakura
  */
 
-import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-import type { RxReq } from 'rx-nostr';
-import { createRxOneshotReq } from 'rx-nostr';
+import { QueryClient, createQuery, useQueryClient } from '@tanstack/svelte-query';
+import type { LazyFilter, RxReq, RxReqOverable, RxReqPipeable } from 'rx-nostr';
+import { createRxBackwardReq } from 'rx-nostr';
 import { derived, readable, writable } from 'svelte/store';
 
-import type { ReqResult, ReqStatus, UseReqOpts } from './types.js';
-
+import type { ReqResult, ReqStatus, RxReqBase, UseReqOpts } from './types.js';
+import type { Observable } from 'rxjs';
 // TODO: Add throttling support
 // TODO: Add timeout support
 export function useReq<A>({
@@ -20,11 +20,9 @@ export function useReq<A>({
   req,
   initData
 }: UseReqOpts<A>): ReqResult<A> {
-  const queryClient = useQueryClient();
-
-  if (rxNostr.getRelays().length === 0) {
+  const queryClient: QueryClient = useQueryClient();
+  if (Object.keys(rxNostr.getDefaultRelays()).length === 0) {
     queryClient.setQueryData(queryKey, initData);
-
     return {
       data: readable<A>(initData),
       status: readable('success'),
@@ -32,44 +30,60 @@ export function useReq<A>({
     };
   }
 
-  let _req: RxReq;
+  let _req:
+    | RxReqBase
+    | (RxReq<'backward'> & {
+        emit(
+          filters: LazyFilter | LazyFilter[],
+          options?:
+            | {
+                relays: string[];
+              }
+            | undefined
+        ): void;
+      } & RxReqOverable &
+        RxReqPipeable);
+
   if (req) {
-    req.emit(filters);
     _req = req;
   } else {
-    _req = createRxOneshotReq({ filters });
+    _req = createRxBackwardReq();
   }
 
   const status = writable<ReqStatus>('loading');
   const error = writable<Error>();
 
-  const obs = rxNostr.use(_req).pipe(operator);
-  const query = createQuery(queryKey, () => {
-    return new Promise((resolve, reject) => {
-      let fullfilled = false;
+  const obs: Observable<A> = rxNostr.use(_req).pipe(operator);
+  const query = createQuery({
+    queryKey: queryKey,
+    queryFn: (): Promise<A> => {
+      return new Promise((resolve, reject) => {
+        let fulfilled = false;
 
-      obs.subscribe({
-        next: (v) => {
-          if (fullfilled) {
-            queryClient.setQueryData(queryKey, v);
-          } else {
-            resolve(v);
-            fullfilled = true;
-          }
-        },
-        complete: () => status.set('success'),
-        error: (e) => {
-          console.error(e);
-          status.set('error');
-          error.set(e);
+        obs.subscribe({
+          next: (v: A) => {
+            if (fulfilled) {
+              queryClient.setQueryData(queryKey, v);
+            } else {
+              resolve(v);
+              fulfilled = true;
+            }
+          },
+          complete: () => status.set('success'),
+          error: (e) => {
+            console.error(e);
+            status.set('error');
+            error.set(e);
 
-          if (!fullfilled) {
-            reject(e);
-            fullfilled = true;
+            if (!fulfilled) {
+              reject(e);
+              fulfilled = true;
+            }
           }
-        }
+        });
+        _req.emit(filters);
       });
-    });
+    }
   });
 
   return {

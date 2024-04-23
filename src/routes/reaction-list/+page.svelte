@@ -26,7 +26,6 @@
     }
   ];
   const req = createRxForwardReq();
-
   const targetEventIdOf = (reaction: Nostr.Event) => {
     // Extract the last 'e' tag in .tags (NIP-25)
     return reaction.tags.filter(([tag]) => tag === 'e').slice(-1)[0][1];

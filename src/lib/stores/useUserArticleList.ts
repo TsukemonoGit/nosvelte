@@ -5,7 +5,7 @@
 
 import type { QueryKey } from '@tanstack/svelte-query';
 import type { EventPacket, RxNostr } from 'rx-nostr';
-import { filterKind, verify } from 'rx-nostr';
+import { filterByKind, verify } from 'rx-nostr';
 import { pipe } from 'rxjs';
 
 import { filterPubkey, latestEachNaddr, scanArray } from './operators.js';
@@ -21,7 +21,7 @@ export function useUserArticleList(
 ): ReqResult<EventPacket[]> {
   const filters = [{ kinds: [30023], authors: [pubkey], limit }];
   const operator = pipe(
-    filterKind(30023),
+    filterByKind(30023),
     filterPubkey(pubkey),
     verify(),
     latestEachNaddr(),
